@@ -39,6 +39,8 @@
 #include <math.h>
 #include "ntp-protocol.h"
 
+void tests();
+
 // Default NTP servers - you can test with different ones!
 #define DEFAULT_NTP_SERVER "pool.ntp.org"
 #define TIMEOUT_SECONDS 5
@@ -57,7 +59,7 @@ int main(int argc, char* argv[]) {
     
     // Parse command line arguments
     int opt;
-    while ((opt = getopt(argc, argv, "s:hd")) != -1) {
+    while ((opt = getopt(argc, argv, "s:hdt")) != -1) {
         switch (opt) {
             case 's':
                 ntp_server = optarg;
@@ -70,6 +72,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 'h':
                 usage(argv[0]);
+                return 0;
+            case 't':
+                tests();
                 return 0;
             default:
                 usage(argv[0]);
@@ -311,7 +316,7 @@ void demonstrate_epoch_conversion(void) {
  * These functions handle time format conversions between system time and NTP time.
  */
 
-//STUDENT TODO
+//STUDENT DONE
 /*
  * Get current system time and convert to NTP timestamp format
  * 
@@ -335,12 +340,25 @@ void demonstrate_epoch_conversion(void) {
  * Use demonstrate_epoch_conversion() to verify your conversion logic
  */
 void get_current_ntp_time(ntp_timestamp_t *ntp_ts){
-    printf("get_current_ntp_time() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    printf("get_current_ntp_time() - NOW IMPLEMENTED\n");
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+
+    ntp_timestamp_t t;
+
+    // DONE: Implement this function
     // Hint: Use gettimeofday(), convert epoch, scale microseconds
     memset(ntp_ts, 0, sizeof(ntp_timestamp_t));
+    ntp_ts->seconds = UNIX_TO_NTP_SECONDS(tv.tv_sec);
+    ntp_ts->fraction = MICROSECONDS_TO_FRACTIONS(tv.tv_usec);
 }
 
+void current_timestamp_test(){
+   ntp_timestamp_t t;
+   get_current_ntp_time(&t);
+
+   printf("NTP SECONDS SINCE EPOCH: %u\nNTP FRACTIONS: %u\n",t.seconds,t.fraction);
+}
 //STUDENT TODO
 /*
  * Convert NTP timestamp to human-readable string
@@ -368,9 +386,16 @@ void get_current_ntp_time(ntp_timestamp_t *ntp_ts){
  */
 void ntp_time_to_string(const ntp_timestamp_t *ntp_ts, char *buffer, size_t buffer_size, int local) {
     printf("ntp_time_to_string() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
-    // Hint: Convert NTP to Unix time, use localtime/gmtime, format with snprintf
-    snprintf(buffer, buffer_size, "TO BE IMPLEMENTED");
+    time_t unix_seconds = NTP_TO_UNIX_SECONDS(ntp_ts->seconds);
+    time_t miliseconds = FRACTIONS_TO_MICROSECONDS(ntp_ts->fraction);
+    struct tm *t;
+    if(local){
+      t = localtime(&unix_seconds);
+    } else{
+      t = localtime(&unix_seconds);
+    }
+    // TODO: Finish the formatting and test
+    snprintf(buffer, buffer_size, "%s-%s-%s %s:%s:%s.%dl",'a');
 }
 
 //STUDENT TODO
@@ -795,4 +820,8 @@ void print_ntp_results(const ntp_result_t* result) {
     printf("print_ntp_results() - TO BE IMPLEMENTED\n");
     //Hint:  Note that you really dont have to do much here other than
     //       Print out data that is passed in teh result arguement
+}
+
+void tests(){
+   current_timestamp_test();
 }

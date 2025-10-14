@@ -275,6 +275,10 @@ typedef struct {
 #define NTP_TO_UNIX(ntp_sec)    NTP_TO_UNIX_SECONDS(ntp_sec)
 #define UNIX_TO_NTP(unix_sec)   UNIX_TO_NTP_SECONDS(unix_sec)
 
+//STUDENT IMPLEMENTED MACROS
+#define FRACTIONS_TO_MICROSECONDS(frac) (frac / 2^32) * 1000000;
+#define MICROSECONDS_TO_FRACTIONS(micro) (micro / 1,000,000) * 2^32
+
 /*
  * =============================================================================
  * COMMON EPOCH MISTAKES AND HOW TO SPOT THEM
