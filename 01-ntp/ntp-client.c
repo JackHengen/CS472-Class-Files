@@ -19,7 +19,7 @@
  *          ./ntp-client -s time.nist.gov
  * 
  * STUDENT INSTRUCTIONS:
- * Complete all functions marked with "STUDENT TODO" below.
+ * Complete all functions marked with "STUDENT TODo" below.
  * Follow the implementation order suggested in the header file.
  * Refer to the detailed comments for guidance on each function.
  */
@@ -340,7 +340,6 @@ void demonstrate_epoch_conversion(void) {
  * Use demonstrate_epoch_conversion() to verify your conversion logic
  */
 void get_current_ntp_time(ntp_timestamp_t *ntp_ts){
-    printf("get_current_ntp_time() - NOW IMPLEMENTED\n");
     struct timeval tv;
     gettimeofday(&tv,NULL);
 
@@ -359,7 +358,7 @@ void current_timestamp_test(){
 
    printf("NTP SECONDS SINCE EPOCH: %u\nNTP FRACTIONS: %u\n",t.seconds,t.fraction);
 }
-//STUDENT TODO
+//STUDENT DONE
 /*
  * Convert NTP timestamp to human-readable string
  * 
@@ -385,20 +384,34 @@ void current_timestamp_test(){
  * If conversion fails, use snprintf to write "INVALID_TIME" to buffer
  */
 void ntp_time_to_string(const ntp_timestamp_t *ntp_ts, char *buffer, size_t buffer_size, int local) {
-    printf("ntp_time_to_string() - TO BE IMPLEMENTED\n");
     time_t unix_seconds = NTP_TO_UNIX_SECONDS(ntp_ts->seconds);
-    time_t miliseconds = FRACTIONS_TO_MICROSECONDS(ntp_ts->fraction);
+    time_t microseconds = FRACTIONS_TO_MICROSECONDS(ntp_ts->fraction);
     struct tm *t;
     if(local){
       t = localtime(&unix_seconds);
     } else{
-      t = localtime(&unix_seconds);
+      t = gmtime(&unix_seconds);
     }
-    // TODO: Finish the formatting and test
-    snprintf(buffer, buffer_size, "%s-%s-%s %s:%s:%s.%dl",'a');
+
+    // DONE: Finish the formatting and test
+   //t->
+    snprintf(buffer, buffer_size, "%d-%d-%d %d:%d:%d.%06ld",1900+t->tm_year,1+t->tm_mon,t->tm_mday,t->tm_hour,t->tm_min,t->tm_sec,microseconds);
 }
 
-//STUDENT TODO
+void ntp_to_string_test(){
+   ntp_timestamp_t t;
+   get_current_ntp_time(&t);
+
+   size_t alloc_size = 50;
+   char *local_str = malloc(alloc_size);
+   char *gm_str = malloc(alloc_size);
+   ntp_time_to_string(&t,local_str,alloc_size,1);
+   ntp_time_to_string(&t,gm_str,alloc_size,0);
+
+   printf("local str: %s\ngm str: %s\n",local_str,gm_str);
+}
+
+//STUDENT DONE
 /*
  * Convert NTP timestamp to double for mathematical operations
  * 
@@ -422,13 +435,20 @@ void ntp_time_to_string(const ntp_timestamp_t *ntp_ts, char *buffer, size_t buff
  * Use NTP_FRACTION_SCALE (2^32) constant for the division
  */
 double ntp_time_to_double(const ntp_timestamp_t* timestamp) {
-    printf("ntp_time_to_double() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    // DONE: Implement this function
     // Hint: Convert both parts to double and add
-    return 0.0;
+    return timestamp->seconds + FRACTIONS_TO_MICROSECONDS(timestamp->fraction)/(double)pow(10,6);
 }
 
-//STUDENT TODO
+void to_double_test(){
+   ntp_timestamp_t t;
+   get_current_ntp_time(&t);
+
+   double dub = ntp_time_to_double(&t);
+   printf("NTP timestamp to double %f\n",dub);
+}
+
+//STUDENT DONE
 /*
  * Print NTP timestamp with descriptive label
  * 
@@ -444,18 +464,27 @@ double ntp_time_to_double(const ntp_timestamp_t* timestamp) {
  * Output: "Transmit Time: 2025-09-15 13:36:14.541216 (Local Time)"
  */
 void print_ntp_time(const ntp_timestamp_t *ts, const char* label, int local){
-    printf("print_ntp_time() - TO BE IMPLEMENTED - %s\n", label);
-    // TODO: Implement this function
+    char* suffix = local ? "Local Time" : "GMT Time";
+    size_t ntp_str_size = 50;
+    char* ntp_str = malloc(ntp_str_size);
+    ntp_time_to_string(ts,ntp_str,ntp_str_size,local);
+    printf("%s: %s (%s)\n",label,ntp_str,suffix);
+    // DONE: Implement this function
     // Hint: Use ntp_time_to_string and printf
 }
 
+void print_ntp_test(){
+   ntp_timestamp_t t;
+   get_current_ntp_time(&t);
+   print_ntp_time(&t,"Label Text",1);
+}
 /*
  * GROUP 2: NETWORK BYTE ORDER FUNCTIONS
  * These functions handle conversion between host and network byte order.
  * Network protocols require big-endian byte order regardless of host architecture.
  */
 
-//STUDENT TODO
+//STUDENT DONE
 /*
  * Convert NTP timestamp from host to network byte order
  * 
@@ -474,12 +503,25 @@ void print_ntp_time(const ntp_timestamp_t *ts, const char* label, int local){
  * Network protocols require consistent byte order across different architectures
  */
 void ntp_ts_to_net(ntp_timestamp_t* timestamp){
-    printf("ntp_ts_to_net() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    timestamp->seconds = htonl(timestamp->seconds);
+    timestamp->fraction = htonl(timestamp->fraction);
+    // DONE: Implement this function
     // Hint: Use htonl() on both seconds and fraction fields
 }
 
-//STUDENT TODO
+//DISCLAIMER - THIS IS COPIED FROM CHATGPT AND THEN SLIGHTLY MODIFIED THIS IS NOT MY ORIGINAL CODE
+void print_bits(const void *ptr, size_t size) {
+    const unsigned char *b = ptr;
+    for (size_t i = 0; i < size; i++) {
+        for (int j = 7; j >= 0; j--) {   // MSB first
+            putchar((b[i] & (1 << j)) ? '1' : '0');
+        }
+        putchar(' ');  // optional separator between bytes
+    }
+    putchar('\n');
+}
+
+//STUDENT DONE
 /*
  * Convert NTP timestamp from network to host byte order
  * 
@@ -498,12 +540,48 @@ void ntp_ts_to_net(ntp_timestamp_t* timestamp){
  * Host processing requires native byte order for correct arithmetic
  */
 void ntp_ts_to_host(ntp_timestamp_t* timestamp){
-    printf("ntp_ts_to_host() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    timestamp->seconds = ntohl(timestamp->seconds);
+    timestamp->fraction = ntohl(timestamp->fraction);
+    // DONE: Implement this function
     // Hint: Use ntohl() on both seconds and fraction fields
 }
 
-//STUDENT TODO
+void ts_to_host_test(){
+   ntp_timestamp_t t;
+   get_current_ntp_time(&t);
+
+   printf("ts_to_host_test()\n");
+
+   printf("NTP SECONDS HOST: ");
+   print_bits(&t.seconds,4);
+   
+   ntp_ts_to_net(&t);
+
+   printf("NTP SECONDS NET: ");
+   print_bits(&t.seconds,4);
+
+   ntp_ts_to_host(&t);
+
+   printf("NTP SECONDS HOST AGAIN: ");
+   print_bits(&t.seconds,4);
+
+   get_current_ntp_time(&t);
+
+   printf("NTP FRACTIONS HOST: ");
+   print_bits(&t.fraction,4);
+
+   ntp_ts_to_host(&t);
+
+   printf("NTP FRACTIONS NET: ");
+   print_bits(&t.fraction,4);
+
+   ntp_ts_to_host(&t);
+
+   printf("NTP FRACTIONS HOST AGAIN: ");
+   print_bits(&t.fraction,4);
+}
+
+//STUDENT DONE
 /*
  * Convert entire NTP packet from host to network byte order
  * 
@@ -523,12 +601,18 @@ void ntp_ts_to_host(ntp_timestamp_t* timestamp){
  * CALL THIS: Before sending packet over network
  */
 void ntp_to_net(ntp_packet_t* packet){
-    printf("ntp_to_net() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    packet->root_delay = htonl(packet->root_delay);
+    packet->root_dispersion = htonl(packet->root_dispersion);
+    packet->reference_id = htonl(packet->reference_id);
+    ntp_ts_to_net(&packet->orig_time);
+    ntp_ts_to_net(&packet->recv_time);
+    ntp_ts_to_net(&packet->ref_time);
+    ntp_ts_to_net(&packet->xmit_time);
+    // DONE: Implement this function
     // Hint: Convert 32-bit fields with htonl(), timestamps with ntp_ts_to_net()
 }
 
-//STUDENT TODO
+//STUDENT DONE
 /*
  * Convert entire NTP packet from network to host byte order
  * 
@@ -547,10 +631,51 @@ void ntp_to_net(ntp_packet_t* packet){
  * CALL THIS: After receiving packet from network
  */
 void ntp_to_host(ntp_packet_t* packet){
-    printf("ntp_to_host() - TO BE IMPLEMENTED\n");
-    // TODO: Implement this function
+    packet->root_delay = ntohl(packet->root_delay);
+    packet->root_dispersion = ntohl(packet->root_dispersion);
+    packet->reference_id = ntohl(packet->reference_id);
+    ntp_ts_to_host(&packet->orig_time);
+    ntp_ts_to_host(&packet->recv_time);
+    ntp_ts_to_host(&packet->ref_time);
+    ntp_ts_to_host(&packet->xmit_time);
+
+
+    // DONE: Implement this function
     // Hint: Convert 32-bit fields with ntohl(), timestamps with ntp_ts_to_host()
 }
+
+void print_ntp_packet(ntp_packet_t* packet){
+
+   char* sep = " | ";
+
+   printf(sep);
+
+   print_bits(&packet->li_vn_mode,1);         
+   printf(sep);
+   print_bits(&packet->stratum,1);
+   printf(sep);
+   print_bits(&packet->poll,1);
+   printf(sep);
+   print_bits(&packet->precision,1);
+   printf(sep);
+
+   print_bits(&packet->root_delay,4);
+   printf(sep);
+   print_bits(&packet->root_dispersion,4);
+   printf(sep);
+   print_bits(&packet->reference_id,4);
+   printf(sep);
+
+   print_bits(&packet->ref_time,4);
+   printf(sep);
+   print_bits(&packet->orig_time,4);
+   printf(sep);
+   print_bits(&packet->recv_time,4);
+   printf(sep);
+   print_bits(&packet->xmit_time,4);
+   printf(sep);
+}
+
 
 /*
  * GROUP 3: NTP PACKET CONSTRUCTION
@@ -824,4 +949,9 @@ void print_ntp_results(const ntp_result_t* result) {
 
 void tests(){
    current_timestamp_test();
+   ntp_to_string_test();
+   to_double_test();
+   print_ntp_test();
+   ts_to_host_test();
 }
+
