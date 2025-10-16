@@ -259,11 +259,14 @@ typedef struct {
 // The servers returned dispersion and delay is encoded such that the 
 // upper 16 bits are seconds, and the lower 16 bits are fractions
 // of a second, here are helpers to decode Q16.16 encoded numbers
+
+//IDK If I messed up the macro or it was in wrong, but I changed it because it was incorrectly giving root dispersion
+//with factor of 1000x
 #define GET_NTP_Q1616_SEC(d) (d >> 16)
-#define GET_NTP_Q1616_FRAC(d) (d & 0xFFFF0000)
+#define GET_NTP_Q1616_FRAC(d) (d & 0xFFFF)
 // Returns a double number in seconds
 #define GET_NTP_Q1616_TS(d) ( \
-    (double)((GET_NTP_Q1616_SEC(d) * 1000) + \
+    (double)((GET_NTP_Q1616_SEC(d)) + \
              (GET_NTP_Q1616_FRAC(d) / 65535.0)) \
 )
 
