@@ -395,7 +395,7 @@ void ntp_time_to_string(const ntp_timestamp_t *ntp_ts, char *buffer, size_t buff
 
     // DONE: Finish the formatting and test
    //t->
-    snprintf(buffer, buffer_size, "%d-%02d-%02d %d:%d:%d.%06ld",1900+t->tm_year,1+t->tm_mon,t->tm_mday,t->tm_hour,t->tm_min,t->tm_sec,microseconds);
+    snprintf(buffer, buffer_size, "%d-%d-%d %d:%02d:%02d.%06ld",1900+t->tm_year,1+t->tm_mon,t->tm_mday,t->tm_hour,t->tm_min,t->tm_sec,microseconds);
 }
 
 void ntp_to_string_test(){
