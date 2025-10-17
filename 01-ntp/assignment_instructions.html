@@ -1,0 +1,543 @@
+<h1
+id="what-time-is-it---network-time-protocol-ntp-client-assignment">What
+Time is It? - Network Time Protocol (NTP) Client Assignment</h1>
+<h2 id="overview">Overview</h2>
+<p>Ever wondered how your computer knows the exact time? When you
+connect to the internet, your system automatically synchronizes with
+time servers around the world using the Network Time Protocol (NTP). In
+this assignment, you’ll build your own NTP client to understand how
+network time synchronization works at the protocol level.</p>
+<h2 id="introduction-to-network-time-protocol-ntp">Introduction to
+Network Time Protocol (NTP)</h2>
+<h3 id="what-is-ntp">What is NTP?</h3>
+<p>The Network Time Protocol (NTP) is one of the oldest Internet
+protocols still in use today, designed to synchronize computer clocks
+across networks. NTP can typically maintain time accuracy within tens of
+milliseconds over the public Internet and can achieve better than one
+millisecond accuracy in local area networks.</p>
+<h3 id="how-ntp-works---the-big-picture">How NTP Works - The Big
+Picture</h3>
+<p>NTP operates on a hierarchical system of time sources called
+<strong>strata</strong>:</p>
+<ul class="incremental">
+<li><strong>Stratum 0</strong>: Reference clocks (atomic clocks, GPS
+receivers) - not directly on the network</li>
+<li><strong>Stratum 1</strong>: Primary time servers directly connected
+to Stratum 0 sources</li>
+<li><strong>Stratum 2</strong>: Secondary servers that sync with Stratum
+1 servers</li>
+<li><strong>Stratum 3+</strong>: Additional levels, each syncing with
+the level above</li>
+</ul>
+<p>This hierarchy prevents timing loops and ensures everyone has a clear
+path back to authoritative time sources. The lower the stratum number,
+the closer you are to the reference clock and typically the more
+accurate the time.</p>
+<p><strong>Important</strong>: When building an NTP client request, we
+set the stratum field to <strong>0</strong> (unspecified). This might
+seem counterintuitive, but it’s the correct behavior! A stratum of 0 in
+a client request means “I don’t know what stratum I am” - essentially
+saying “I’m asking for time, not providing it.” The server will respond
+with its own stratum level (usually 1-4 for public servers), telling you
+how many hops away from the reference clock it is.</p>
+<p>If we incorrectly set a stratum value like 2 in our request, it would
+imply we’re already a synchronized time server ourselves, which would be
+misleading and could confuse the time hierarchy.</p>
+<p>When your computer requests time synchronization, it exchanges
+timestamps with NTP servers to calculate two critical values: -
+<strong>Clock Offset</strong>: How far off your local time is from the
+server’s time - <strong>Round-trip Delay</strong>: How long network
+packets take to travel between client and server</p>
+<h3 id="the-ntp-algorithm---four-timestamps">The NTP Algorithm - Four
+Timestamps</h3>
+<p>NTP uses a simple but elegant algorithm based on four timestamps:</p>
+<ol class="incremental" type="1">
+<li><strong>T1</strong>: Client transmit time (when you send the
+request)</li>
+<li><strong>T2</strong>: Server receive time (when the server gets your
+request)</li>
+<li><strong>T3</strong>: Server transmit time (when the server sends the
+response)</li>
+<li><strong>T4</strong>: Client receive time (when you get the
+response)</li>
+</ol>
+<p>From these four timestamps, NTP calculates: - <strong>Delay</strong>
+= (T4 - T1) - (T3 - T2) - <strong>Offset</strong> = ((T2 - T1) + (T3 -
+T4)) / 2</p>
+<h2 id="understanding-the-ntp-packet-format">Understanding the NTP
+Packet Format</h2>
+<p>NTP uses a fixed 48-byte packet format sent over UDP port 123. Here
+are the key fields you need to understand:</p>
+<h3 id="header-fields-first-4-bytes">Header Fields (First 4 bytes)</h3>
+<p>The first byte of every NTP packet contains three fields packed
+together using bit manipulation. Understanding this is crucial for
+correctly building NTP packets.</p>
+<p><strong>The Packed Byte: <code>li_vn_mode</code></strong></p>
+<p>NTP packs three small fields into one byte for efficiency: -
+<strong>Leap Indicator (2 bits)</strong>: Clock sync status - use 3 for
+client requests - <strong>Version Number (3 bits)</strong>: Always 4 for
+modern NTP - <strong>Mode (3 bits)</strong>: 3 = client request, 4 =
+server response</p>
+<p><strong>STUDENTS: Use the provided macros - no manual bit math
+required!</strong></p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>SET_NTP_LI_VN_MODE<span class="op">(</span>packet<span class="op">,</span> NTP_LI_UNSYNC<span class="op">,</span> NTP_VERSION<span class="op">,</span> NTP_MODE_CLIENT<span class="op">);</span></span></code></pre></div>
+<p><strong>Visual Example - Bit Packing Walkthrough:</strong></p>
+<p>Let’s build li_vn_mode for a client request: - Leap Indicator (LI) =
+3 (unsynchronized)<br />
+- Version (VN) = 4 (NTP version 4) - Mode = 3 (client request)</p>
+<p>Step 1: Convert to binary - LI = 3 = 11 (binary) - VN = 4 = 100
+(binary) - Mode = 3 = 011 (binary)</p>
+<p>Step 2: Pack into single byte</p>
+<pre><code>Bit positions: 7 6 | 5 4 3 | 2 1 0
+Values:        1 1 | 1 0 0 | 0 1 1
+Result: 11100011 = 0xE3 = 227 decimal</code></pre>
+<p>Step 3: Use the macro (students don’t do math manually!)</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>SET_NTP_LI_VN_MODE<span class="op">(</span>packet<span class="op">,</span> <span class="dv">3</span><span class="op">,</span> <span class="dv">4</span><span class="op">,</span> <span class="dv">3</span><span class="op">);</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">// This sets packet-&gt;li_vn_mode = 0xE3</span></span></code></pre></div>
+<p><strong>Why pack multiple fields into one byte?</strong> Network
+protocols minimize packet size for efficiency. Rather than using
+separate bytes for each small field, NTP packs related information
+together. Your code uses macros to handle this complexity.</p>
+<ul class="incremental">
+<li><p><strong>Leap Indicator (2 bits)</strong>: Warns about leap
+seconds</p>
+<ul class="incremental">
+<li><strong>0 = No warning</strong>: Normal operation</li>
+<li><strong>1 = Last minute has 61 seconds</strong>: Leap second will be
+added</li>
+<li><strong>2 = Last minute has 59 seconds</strong>: Leap second will be
+deleted<br />
+</li>
+<li><strong>3 = Clock unsynchronized</strong>: What clients should send
+(means “I don’t know”)</li>
+</ul>
+<p><em>What’s a leap second?</em> Earth’s rotation isn’t perfectly
+constant, so occasionally we add or remove a second to keep atomic time
+aligned with astronomical time. Most students can ignore this - just use
+“3” for client requests.</p></li>
+<li><p><strong>Version Number (3 bits)</strong>: NTP protocol
+version</p>
+<ul class="incremental">
+<li>Always <strong>4</strong> for modern NTP (versions 1-3 are
+obsolete)</li>
+</ul></li>
+<li><p><strong>Mode (3 bits)</strong>: What type of NTP message this
+is</p>
+<ul class="incremental">
+<li><strong>3 = Client request</strong>: “I’m asking for time”</li>
+<li><strong>4 = Server response</strong>: “Here’s the time you
+requested”</li>
+<li>Other modes exist for server-to-server communication</li>
+</ul></li>
+</ul>
+<p><strong>Other Important Fields:</strong></p>
+<ul class="incremental">
+<li><strong>Stratum (8 bits)</strong>: Distance from reference clock
+<ul class="incremental">
+<li><strong>0 = Unspecified</strong> (for client requests - means “I
+don’t know my level”)</li>
+<li><strong>1 = Primary server</strong> (directly connected to atomic
+clock/GPS)</li>
+<li><strong>2-15 = Secondary servers</strong> (each level further from
+reference)</li>
+</ul></li>
+<li><strong>Poll Interval (8 bits)</strong>: Maximum time between
+messages (log₂ seconds)
+<ul class="incremental">
+<li><strong>6 = 64 seconds</strong> (2⁶ = 64, a reasonable default for
+clients)</li>
+</ul></li>
+<li><strong>Precision (8 bits)</strong>: Clock precision (log₂ seconds,
+signed)
+<ul class="incremental">
+<li><strong>-20 = ~1 microsecond</strong> (2⁻²⁰ ≈ 1 microsecond
+precision)</li>
+</ul></li>
+</ul>
+<h3 id="timestamp-fields-32-bytes">Timestamp Fields (32 bytes)</h3>
+<p><strong>Understanding Time Epochs</strong></p>
+<p>An <strong>epoch</strong> is simply the starting point for counting
+time in a computer system. Think of it like “Year Zero” for a calendar
+system. Different systems chose different starting points:</p>
+<p><strong>Unix Time (used by your computer):</strong> - Starts: January
+1, 1970, 00:00:00 UTC - Right now: ~1727789000 seconds since 1970 - Why
+1970? Unix was developed in early 1970s</p>
+<p><strong>NTP Time (used by time servers):</strong><br />
+- Starts: January 1, 1900, 00:00:00 UTC - Right now: ~3936777800 seconds
+since 1900 - Why 1900? Covers entire 20th century and beyond</p>
+<p><strong>Timeline Visualization:</strong></p>
+<pre><code>1900 -------- 1970 -------- 2025
+ |              |              |
+NTP             Unix           Now
+epoch           epoch          
+starts          starts         
+ |&lt;-- 70 years -&gt;|&lt;-- 55 years -&gt;|
+ |&lt;------- 125 years total -----&gt;|</code></pre>
+<p><strong>The Conversion:</strong> - NTP_EPOCH_OFFSET = 2,208,988,800
+seconds = exactly 70 years - Your Code Will Do This: - unix_time =
+ntp_time - 2208988800 // NTP to Unix - ntp_time = unix_time + 2208988800
+// Unix to NTP</p>
+<p><strong>MEMORY TRICK: NTP time is always BIGGER (it started counting
+earlier)</strong></p>
+<p><strong>Why This Matters</strong>: When you get an NTP timestamp, you
+must convert it to Unix time by subtracting the difference between
+epochs (2,208,988,800 seconds = 70 years). Your code will frequently
+convert between these two time systems.</p>
+<p><strong>NTP Time Representation:</strong> - <strong>32-bit
+seconds</strong>: Whole seconds since 1900 - <strong>32-bit
+fraction</strong>: Fractional seconds (1/2³² increments ≈ 232
+picoseconds)</p>
+<p>This gives NTP incredible precision while covering a 136-year time
+range.</p>
+<p>The packet contains four timestamps: - <strong>Reference
+Timestamp</strong>: When the server’s clock was last set -
+<strong>Origin Timestamp</strong>: Client’s transmit time (T1) -
+<strong>Receive Timestamp</strong>: Server’s receive time (T2) -
+<strong>Transmit Timestamp</strong>: Server’s transmit time (T3)</p>
+<h3 id="network-byte-order">Network Byte Order</h3>
+<p><strong>Critical</strong>: All multi-byte fields must be in network
+byte order (big-endian). Use <code>htonl()</code> when creating packets
+and <code>ntohl()</code> when reading them.</p>
+<h3 id="common-mistakes-and-how-to-spot-them">Common Mistakes and How to
+Spot Them</h3>
+<p><strong>Epoch Conversion Mistakes:</strong></p>
+<ol class="incremental" type="1">
+<li><strong>Forgot to convert epochs</strong>
+<ul class="incremental">
+<li>Symptom: Times show up as 1900 or way in the future</li>
+<li>Fix: Always add/subtract NTP_EPOCH_OFFSET</li>
+</ul></li>
+<li><strong>Converting in wrong direction</strong>
+<ul class="incremental">
+<li>Symptom: Times are 70 years off</li>
+<li>Fix: NTP times are BIGGER, Unix times are SMALLER</li>
+</ul></li>
+<li><strong>Converting twice</strong>
+<ul class="incremental">
+<li>Symptom: Times are 140 years off</li>
+<li>Fix: Convert only once at the boundary between systems</li>
+</ul></li>
+</ol>
+<p><strong>Quick Sanity Check:</strong> - Valid NTP time for 2025: ~3.9
+billion seconds - Valid Unix time for 2025: ~1.7 billion seconds - If
+your numbers don’t match these ranges, check your conversion!</p>
+<h2 id="assignment-objectives">Assignment Objectives</h2>
+<p>In this assignment, you will implement the core NTP protocol
+functionality while we handle all the networking complexity for you.
+Your job is to:</p>
+<ol class="incremental" type="1">
+<li><strong>Build proper NTP request packets</strong> by filling in the
+correct header fields and timestamps</li>
+<li><strong>Parse NTP response packets</strong> by extracting and
+converting timestamp data</li>
+<li><strong>Implement the NTP algorithm</strong> to calculate time
+offset and network delay</li>
+<li><strong>Handle time format conversions</strong> between NTP time
+(since 1900) and Unix time (since 1970)</li>
+</ol>
+<h3 id="whats-provided">What’s Provided</h3>
+<ul class="incremental">
+<li>Complete command-line argument processing</li>
+<li>Socket creation and network communication</li>
+<li>DNS hostname resolution</li>
+<li>Error handling and program structure</li>
+<li>Comprehensive header file with all protocol definitions</li>
+<li>Debugging helper functions</li>
+</ul>
+<h3 id="what-you-must-implement">What You Must Implement</h3>
+<ul class="incremental">
+<li><code>build_ntp_request()</code>: Create a properly formatted NTP
+request packet</li>
+<li><code>ntp_timestamp_to_double()</code>: Convert NTP timestamps to
+Unix time</li>
+<li><code>double_to_ntp_timestamp()</code>: Convert Unix time to NTP
+format</li>
+<li><code>calculate_ntp_offset()</code>: Implement the core NTP
+synchronization algorithm</li>
+<li><code>print_ntp_packet_info()</code>: Display packet contents for
+debugging</li>
+<li><code>print_ntp_results()</code>: Show final results with quality
+assessment</li>
+</ul>
+<h2 id="learning-objectives">Learning Objectives</h2>
+<p>By completing this assignment, you will:</p>
+<h3 id="technical-skills">Technical Skills</h3>
+<ul class="incremental">
+<li><strong>Protocol Implementation</strong>: Understand how binary
+network protocols work in practice</li>
+<li><strong>Bit Manipulation</strong>: Master packed C structures and
+bit field operations</li>
+<li><strong>Network Byte Order</strong>: Handle endianness in network
+programming</li>
+<li><strong>Time Representation</strong>: Work with different time
+formats and epochs</li>
+<li><strong>Algorithm Implementation</strong>: Code a real-world network
+synchronization algorithm</li>
+</ul>
+<h3 id="conceptual-understanding">Conceptual Understanding</h3>
+<ul class="incremental">
+<li><strong>Network Protocols</strong>: See how standardized protocols
+enable internet functionality</li>
+<li><strong>Time Synchronization</strong>: Understand distributed system
+clock coordination</li>
+<li><strong>Precision vs. Accuracy</strong>: Learn the difference and
+why both matter</li>
+<li><strong>Network Effects</strong>: See how network delay affects
+distributed algorithms</li>
+</ul>
+<h3 id="professional-development">Professional Development</h3>
+<ul class="incremental">
+<li><strong>Reading Specifications</strong>: Interpret formal protocol
+documentation</li>
+<li><strong>Debugging Network Code</strong>: Use packet analysis and
+structured debugging</li>
+<li><strong>Code Organization</strong>: Structure complex programs with
+clear separation of concerns</li>
+</ul>
+<h2 id="getting-started">Getting Started</h2>
+<ol class="incremental" type="1">
+<li><strong>Examine the code structure</strong>: Start by reading
+through the provided scaffold to understand the program flow</li>
+<li><strong>Study the header file</strong>: Understand the packet
+structure and available macros</li>
+<li><strong>Use debugging tools</strong>: Try
+<code>./ntp-client -d</code> to see epoch conversion examples</li>
+<li><strong>Start with packet building</strong>: Implement
+<code>build_ntp_request()</code> first</li>
+<li><strong>Test incrementally</strong>: Use the provided print
+functions to verify your packet contents</li>
+<li><strong>Implement time conversion</strong>: Work on the timestamp
+conversion functions</li>
+<li><strong>Complete the algorithm</strong>: Implement the core NTP
+calculation</li>
+<li><strong>Polish the output</strong>: Make your results display
+user-friendly</li>
+</ol>
+<h2 id="testing-your-implementation">Testing Your Implementation</h2>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Compile</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Test with default server</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">./ntp-client</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Test with specific servers</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="ex">./ntp-client</span> <span class="at">-s</span> time.nist.gov</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="ex">./ntp-client</span> <span class="at">-s</span> pool.ntp.org</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Debug mode - see epoch conversion and bit field examples</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="ex">./ntp-client</span> <span class="at">-d</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Check structure sizes (should be exactly 48 bytes)</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> check-structs</span></code></pre></div>
+<h3 id="expected-results">Expected Results</h3>
+<ul class="incremental">
+<li>Time offsets typically under 100 milliseconds for good servers</li>
+<li>Round-trip delays vary based on network distance</li>
+<li>Stratum values of 1-4 for most public servers</li>
+</ul>
+<h3 id="debugging-tools-available">Debugging Tools Available</h3>
+<p>Your implementation includes several debugging helpers:</p>
+<ul class="incremental">
+<li><strong>Debug Mode (<code>-d</code> flag)</strong>: Shows epoch
+conversion examples with real timestamps</li>
+<li><strong><code>debug_print_bit_fields()</code></strong>: Shows bit
+field breakdown with binary representation</li>
+<li><strong>Sanity Check Ranges</strong>: Verify your timestamps fall
+within expected ranges</li>
+</ul>
+<h2 id="analysis-questions">Analysis Questions</h2>
+<p>In addition to your code implementation, answer the following
+questions to demonstrate your understanding of key NTP concepts. Your
+answers should be clear and demonstrate understanding (1-2 paragraphs
+each). Include sample outputs from testing different servers.</p>
+<h3 id="question-1-time-travel-debugging">Question 1: Time Travel
+Debugging</h3>
+<p>Your NTP client reports your clock is 30 seconds ahead, but you just
+synchronized yesterday. List three possible causes and how you’d
+investigate each one. Consider both technical issues (hardware,
+software, network) and real-world scenarios that could affect time
+synchronization.</p>
+<h3 id="question-2-network-distance-detective-work">Question 2: Network
+Distance Detective Work</h3>
+<p>Test your NTP client with two different servers - one geographically
+close to you (like a national time service) and one farther away.
+Compare the round-trip delays you observe.</p>
+<p>Based on your results, explain why the physical distance to an NTP
+server affects time synchronization quality. Why might you get a more
+accurate time sync from a “worse” time source that’s closer to you
+rather than a “better” time source that’s farther away? What does this
+tell us about distributed systems in general?</p>
+<p>Include your actual test results and delay measurements in your
+answer.</p>
+<h3 id="question-3-protocol-design-challenge">Question 3: Protocol
+Design Challenge</h3>
+<p>Imagine a simpler time protocol where a client just sends “What time
+is it?” to a server, and the server responds with “It’s 2:30:15 PM”.</p>
+<p>Explain why this simple approach wouldn’t work well for accurate time
+synchronization over a network. In your answer, discuss what problems
+network delay creates for time synchronization and why NTP needs to
+exchange multiple timestamps instead of just sending the current time.
+What additional information does having all four timestamps (T1, T2, T3,
+T4) provide that a simple request-response couldn’t?</p>
+<h2 id="deliverables">Deliverables</h2>
+<p>Submit the following files: - <code>ntp-client.c</code> - Your
+completed implementation - <code>answers.md</code> - Your responses to
+the three analysis questions (include sample outputs from different
+servers) - <code>README.md</code> - Brief description of your approach
+and any challenges faced</p>
+<h2 id="grading-rubric">Grading Rubric</h2>
+<table>
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 17%" />
+<col style="width: 14%" />
+<col style="width: 19%" />
+<col style="width: 17%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Component</th>
+<th>Excellent (90-100%)</th>
+<th>Good (80-89%)</th>
+<th>Satisfactory (70-79%)</th>
+<th>Needs Work (60-69%)</th>
+<th>Unsatisfactory (0-59%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>NTP Request Construction (20%)</strong></td>
+<td>Request packet perfectly formatted with all fields correctly set,
+proper bit manipulation, network byte order handled correctly</td>
+<td>Request packet mostly correct, minor issues with some fields or byte
+order</td>
+<td>Request packet functional but has some incorrect fields or
+formatting issues</td>
+<td>Request packet created but with several errors affecting
+functionality</td>
+<td>Request packet malformed or not implemented</td>
+</tr>
+<tr>
+<td><strong>Time Conversion Functions (15%)</strong></td>
+<td>Timestamp conversions flawless, handles NTP epoch correctly, proper
+precision maintained</td>
+<td>Timestamp conversions work correctly with minor precision
+issues</td>
+<td>Conversions functional but may lose some precision or have edge case
+issues</td>
+<td>Conversions work for basic cases but have notable errors</td>
+<td>Conversions incorrect or not implemented</td>
+</tr>
+<tr>
+<td><strong>NTP Algorithm Implementation (20%)</strong></td>
+<td>Perfect implementation of NTP algorithm, correct offset and delay
+calculations, handles all edge cases</td>
+<td>Algorithm implemented correctly with minor calculation errors</td>
+<td>Algorithm works for most cases but has some calculation issues</td>
+<td>Basic algorithm implemented but with several computational
+errors</td>
+<td>Algorithm incorrect or not implemented</td>
+</tr>
+<tr>
+<td><strong>Output and Debugging (10%)</strong></td>
+<td>Excellent output formatting, comprehensive packet information
+display, clear results presentation</td>
+<td>Good output with minor formatting issues, most information displayed
+correctly</td>
+<td>Basic output that shows essential information but lacks polish</td>
+<td>Output present but difficult to read or missing important
+information</td>
+<td>Poor or missing output functions</td>
+</tr>
+<tr>
+<td><strong>Code Quality and Documentation (10%)</strong></td>
+<td>Clean, well-commented code that follows best practices, excellent
+variable naming and structure</td>
+<td>Good code organization with adequate comments and clear
+structure</td>
+<td>Code is functional and reasonably organized with some comments</td>
+<td>Code works but is poorly organized or documented</td>
+<td>Code is difficult to understand or follow</td>
+</tr>
+<tr>
+<td><strong>Analysis Questions (20%)</strong></td>
+<td>Demonstrates deep understanding of NTP concepts, provides insightful
+analysis with clear explanations and supporting evidence from actual
+test results</td>
+<td>Shows solid understanding with mostly correct analysis and good
+explanations, includes some test data</td>
+<td>Basic understanding evident, answers are generally correct but may
+lack depth or supporting data</td>
+<td>Shows some understanding but answers have gaps or minor errors,
+limited test evidence</td>
+<td>Poor understanding, answers are incomplete or incorrect</td>
+</tr>
+<tr>
+<td><strong>Testing and Validation (5%)</strong></td>
+<td>Comprehensive testing with multiple servers, demonstrates
+understanding of results, includes edge case handling, uses debug
+features effectively</td>
+<td>Good testing with multiple servers, shows reasonable results
+interpretation</td>
+<td>Basic testing with successful synchronization shown</td>
+<td>Limited testing, may not work with all servers</td>
+<td>Insufficient testing or non-functional implementation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="grade-scale">Grade Scale</h3>
+<ul class="incremental">
+<li><strong>A (90-100%)</strong>: Implementation demonstrates mastery of
+network protocols and time synchronization concepts</li>
+<li><strong>B (80-89%)</strong>: Solid understanding with minor
+technical issues</li>
+<li><strong>C (70-79%)</strong>: Basic functionality achieved with some
+gaps in implementation</li>
+<li><strong>D (60-69%)</strong>: Minimal functionality, significant
+issues remain</li>
+<li><strong>F (0-59%)</strong>: Implementation does not meet basic
+requirements</li>
+</ul>
+<h3 id="bonus-opportunities-5-each-max-15">Bonus Opportunities (+5%
+each, max +15%)</h3>
+<ul class="incremental">
+<li><strong>Multi-server averaging</strong>: Query multiple servers and
+average the results</li>
+<li><strong>Outlier detection</strong>: Identify and handle servers with
+suspicious responses</li>
+<li><strong>IPv6 support</strong>: Extend the client to work with IPv6
+NTP servers</li>
+<li><strong>Comprehensive error handling</strong>: Add robust validation
+and error recovery</li>
+</ul>
+<h2 id="tips-for-success">Tips for Success</h2>
+<ol class="incremental" type="1">
+<li><strong>Start early</strong>: Network programming can have
+unexpected challenges</li>
+<li><strong>Use the debugging tools</strong>: Try the <code>-d</code>
+flag and <code>debug_print_bit_fields()</code> function</li>
+<li><strong>Read the header file carefully</strong>: All the constants
+and macros you need are provided</li>
+<li><strong>Test with multiple servers</strong>: Different servers may
+expose different bugs</li>
+<li><strong>Pay attention to byte order</strong>: Network protocols are
+strict about endianness</li>
+<li><strong>Understand the math</strong>: The NTP algorithm is simple
+but precise implementation matters</li>
+<li><strong>Use the visual guides</strong>: Reference the bit packing
+and epoch conversion examples</li>
+</ol>
+<h2 id="resources">Resources</h2>
+<ul class="incremental">
+<li><a href="https://tools.ietf.org/html/rfc5905">RFC 5905 - Network
+Time Protocol Version 4</a></li>
+<li><a href="https://www.pool.ntp.org/">NTP Pool Project</a> - Public
+NTP servers</li>
+<li><a
+href="https://www.nist.gov/pml/time-and-frequency-division/services/internet-time-service-its">NIST
+Time Services</a></li>
+</ul>
+<p>Remember: The goal isn’t just to make it work, but to understand how
+network time synchronization enables the modern internet!</p>

@@ -1,0 +1,126 @@
+<h3 id="question-1-time-travel-debugging">Question 1: Time Travel
+Debugging</h3>
+<p>Your NTP client reports your clock is 30 seconds ahead, but you just
+synchronized yesterday. List three possible causes and how you’d
+investigate each one. Consider both technical issues (hardware,
+software, network) and real-world scenarios that could affect time
+synchronization.</p>
+<p>Either your clock is not working properly, the server clock is
+incorrect, or the network may be extremely delayed.</p>
+<ul class="incremental">
+<li><p>To investigate if my clock was working properly I could simply
+sync it to a different ntp server and then wait an hour and see if the
+clock is seconds ahead again by going back to the same ntp server to
+recheck</p></li>
+<li><p>To investigate if the ntp server time is incorrect I can go on
+another computer and sync the clock to the same ntp server and see if my
+clock is seconds ahead. If it is then the ntp server is counting too
+slow.</p></li>
+<li><p>To investigate a network issue I will first try a different ntp
+server, as somethign could be incorrect on the connection just to the
+single ntp server. If there is an issue with multiple ntp servers then I
+may check other websites and take a network speed test.</p></li>
+</ul>
+<h3 id="question-2-network-distance-detective-work">Question 2: Network
+Distance Detective Work</h3>
+<p>Test your NTP client with two different servers - one geographically
+close to you (like a national time service) and one farther away.
+Compare the round-trip delays you observe.</p>
+<p>Based on your results, explain why the physical distance to an NTP
+server affects time synchronization quality. Why might you get a more
+accurate time sync from a “worse” time source that’s closer to you
+rather than a “better” time source that’s farther away? What does this
+tell us about distributed systems in general?</p>
+<p>Include your actual test results and delay measurements in your
+answer.</p>
+<pre><code>Received NTP response from nz.pool.ntp.org!
+--- Response Packet ---
+Leap Indicator: 0
+Version: 4
+Mode: 4
+Stratum: 1
+Poll: 6
+Precision -18
+Reference ID:
+Root Delay: 0.000000
+Root Dispersion: 0.000000
+Reference Time: 2025-10-16 21:44:3.000000 (Local Time)
+Original Time: 2025-10-16 21:44:2.656890 (Local Time)
+Receive Time: 2025-10-16 21:44:3.400000 (Local Time)
+Transmit Time: 2025-10-16 21:44:3.400000 (Local Time)
+
+=== NTP Time Synchronization Results ===
+Server: nz.pool.ntp.org
+Server Time: 2025-10-16 21:44:3.400000 (Local Time)
+Client Time: 2025-10-16 21:44:2.943393 (Local Time)
+Round Trip Delay: 0.286503
+
+Time Offset: 0.143252 seconds
+Final dispersion: 0.143252
+
+Your clock is running BEHIND by 143.251657ms
+Your estimated time error will be +/-143.251657ms
+
+Received NTP response from pool.ntp.org!
+--- Response Packet ---
+Leap Indicator: 0
+Version: 4
+Mode: 4
+Stratum: 2
+Poll: 6
+Precision -25
+Reference ID: 132.239.1.6
+Root Delay: 0.013458
+Root Dispersion: 0.002075
+Reference Time: 2025-10-16 21:27:58.654501 (Local Time)
+Original Time: 2025-10-16 21:45:10.553938 (Local Time)
+Receive Time: 2025-10-16 21:45:11.250760 (Local Time)
+Transmit Time: 2025-10-16 21:45:11.250799 (Local Time)
+
+=== NTP Time Synchronization Results ===
+Server: pool.ntp.org
+Server Time: 2025-10-16 21:45:11.250799 (Local Time)
+Client Time: 2025-10-16 21:45:10.659339 (Local Time)
+Round Trip Delay: 0.105362
+
+Time Offset: 0.052681 seconds
+Final dispersion: 0.061485
+
+Your clock is running BEHIND by 52.680969ms
+Your estimated time error will be +/-61.485425ms</code></pre>
+<p>As you can see the “better” clock is most definitely the stratum 1
+clock which is directly connected to the atomic clock, it has a
+dispersion of 0. However since it is in new zealand the round trip delay
+is .28 seconds or 280 milliseconds. This means that the final dispersion
+and hence the estimated time error is much higher, even though the
+“worse” clock has a worse root dispersion, its final dispersion is less
+than the “better” clock.</p>
+<h3 id="question-3-protocol-design-challenge">Question 3: Protocol
+Design Challenge</h3>
+<p>Imagine a simpler time protocol where a client just sends “What time
+is it?” to a server, and the server responds with “It’s 2:30:15 PM”.</p>
+<p>Explain why this simple approach wouldn’t work well for accurate time
+synchronization over a network. In your answer, discuss what problems
+network delay creates for time synchronization and why NTP needs to
+exchange multiple timestamps instead of just sending the current time.
+What additional information does having all four timestamps (T1, T2, T3,
+T4) provide that a simple request-response couldn’t?</p>
+<p>This protocol wouldn’t take into account network delay, which as
+shown above for the new zealand clock would add .28s of error to a
+protocol of this nature even if the clock responding is perfectly in
+sync. This means that maybe for the average human wanting to know the
+time the protocol would be suitable, but for applications needing to
+know the order of things it would not be suitable. The NTP protocol
+accounts for network delay time by doing t3 + ((t2-t1) + (t4-t3))/2 -
+t4. t3 - t4 is the difference between the client and server including
+the network delay, while t2-t1 is the network delay from client to
+server and the time difference from client to server t4 - t3 is network
+delay from server to client plus time difference from client to server.
+If we add them and divide by two the time difference from server to
+client cancels from the time difference from client to server and we get
+2 times the network delay which we can simply divide by 2. Now we can
+see the whole equation allows us to get the time difference between the
+client and server. This allows us to get the network delay from the
+protocol easily as there is no inheirent field built into ip or udp for
+delay. This could not be done in the simple approach as it lacks the
+time fields needed to estimate this network delay.</p>
