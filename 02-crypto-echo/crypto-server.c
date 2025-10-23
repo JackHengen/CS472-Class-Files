@@ -228,6 +228,8 @@
 #include "protocol.h"
 
 
+void connect_to_clients(int listen_fd);
+
 /* =============================================================================
  * STUDENT TODO: IMPLEMENT THIS FUNCTION
  * =============================================================================
@@ -246,10 +248,83 @@
  * NOTE: If addr is "0.0.0.0", use INADDR_ANY instead of inet_pton()
  */
 void start_server(const char* addr, int port) {
-    printf("Student TODO: Implement start_server()\n");
-    printf("  - Create TCP socket\n");
-    printf("  - Bind to %s:%d\n", addr, port);
-    printf("  - Listen for connections (BACKLOG = %d)\n", BACKLOG);
-    printf("  - Accept and handle clients in a loop\n");
-    printf("  - Close socket on shutdown\n");
+   printf("HELLO FROM START SERVER\n");
+   int fd = socket(AF_INET,SOCK_STREAM,0);
+
+   int opt = 1;
+   int opterr = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+   printf("opterr: %d\n",opterr);
+   if(opterr == -1){
+      perror("socket options failed");
+      exit(-1);
+   }
+
+   struct sockaddr_in addr_struct;
+   memset(&addr, 0, sizeof(addr_struct));
+   addr_struct.sin_family = AF_INET;
+   addr_struct.sin_port = htons(port);
+   addr_struct.sin_addr.s_addr = INADDR_ANY; //parse addr here and if 0.0.0.0 then use INADDR_ANY - may need to use inet_pton
+
+   int binderr = bind(fd, (struct sockaddr*)&addr_struct, sizeof(addr_struct));
+   printf("binderr: %d\n",binderr);
+   if(binderr == -1){
+      perror("binding failed");
+      exit(-1);
+   }
+
+   int listenerr = listen(fd, BACKLOG);
+   printf("listenerr: %d\n",listenerr);
+   if(listenerr == -1){
+      perror("listening failed");
+      exit(-1);
+   }
+
+   connect_to_clients(fd);
+
+    // printf("Student TODO: Implement start_server()\n");
+    // printf("  - Create TCP socket\n");
+    // printf("  - Bind to %s:%d\n", addr, port);
+    // printf("  - Listen for connections (BACKLOG = %d)\n", BACKLOG);
+    // printf("  - Accept and handle clients in a loop\n");
+    // printf("  - Close socket on shutdown\n");
+    close(fd);
+}
+
+void connect_to_clients(int listen_fd){
+   int terminate = 0;
+   while(!terminate){
+      struct sockaddr_in client_addr;
+
+      socklen_t addr_len = sizeof(client_addr);
+      int client_sock = accept(listen_fd, (struct sockaddr*)&client_addr, &addr_len);
+      printf("client sock: %d\n",client_sock);
+      if(client_sock == -1){
+         perror("accept failed");
+         exit(-1);
+      }
+
+      char client_ip[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+
+      size_t test_size = 50;
+      char* recv_buf = malloc(test_size);
+
+      while(1){
+         size_t n = recv(client_sock,recv_buf,test_size,0);
+         
+         printf("\n%ld) %s\n\n",n,recv_buf);
+
+         if(n==0){
+            break;
+         }
+
+      }
+
+
+      int closeerr = close(client_sock);
+      printf("closeerr: %d\n",closeerr);
+      if(closeerr == -1){
+         perror("close failed");
+      }
+   }
 }

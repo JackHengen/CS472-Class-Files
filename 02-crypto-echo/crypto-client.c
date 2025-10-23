@@ -188,11 +188,55 @@
  *   port - Server port number (e.g., 1234)
  */
 void start_client(const char* addr, int port) {
-    printf("Student TODO: Implement start_client()\n");
-    printf("  - Create TCP socket\n");
-    printf("  - Connect to %s:%d\n", addr, port);
-    printf("  - Implement communication loop\n");
-    printf("  - Close socket when done\n");
+   printf("HELLO FROM START CLIENT\n");
+
+   int fd = socket(AF_INET,SOCK_STREAM,0);
+   printf("fd: %d\n",fd);
+
+   struct sockaddr_in addr_struct;
+   memset(&addr_struct,0,sizeof(addr_struct));
+   addr_struct.sin_family = AF_INET;
+   addr_struct.sin_port = htons(port);
+   inet_pton(AF_INET,addr,&addr_struct.sin_addr);
+
+   int succ = connect(fd,(struct sockaddr*)&addr_struct,sizeof(addr_struct));
+   printf("successful connection: %d\n",succ);
+   if(succ == -1){
+      perror("connection failed");
+      exit(-1);
+   }
+  
+   
+   int terminate = 0;
+   #define test_size 50
+   while(!terminate){
+      char send_buf[test_size] = {0};
+      for(int i = 0; i < test_size -1; i++){
+         send_buf[i] = 65+i;
+      }
+
+      size_t n = send(fd, send_buf, test_size, 0);
+      
+      printf("%ld characters sent) %s\n",n,send_buf);
+      char *buf = NULL;
+      size_t i = 0;
+      int ii = getline(&buf,&i,stdin);
+      printf("testing some stuff: i=%ld, ii=%d) %s\n",i, ii, buf);
+   }
+
+
+   int closeerr = close(fd);
+   printf("closeerr: %d\n",closeerr);
+   if(closeerr == -1){
+      printf("close failed\n");
+   }
+
+
+    // printf("Student TODO: Implement start_client()\n");
+    // printf("  - Create TCP socket\n");
+    // printf("  - Connect to %s:%d\n", addr, port);
+    // printf("  - Implement communication loop\n");
+    // printf("  - Close socket when done\n");
 }
 
 
