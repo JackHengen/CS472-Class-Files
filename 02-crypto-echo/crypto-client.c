@@ -173,6 +173,8 @@
 #include "crypto-lib.h"
 #include "protocol.h"
 
+void client_loop(int socket_fd);
+size_t build_packet(const msg_cmd_t *cmd, crypto_msg_t **pdu, crypto_key_t key);
 
 /* =============================================================================
  * STUDENT TODO: IMPLEMENT THIS FUNCTION
@@ -187,11 +189,38 @@
  *   addr - Server IP address (e.g., "127.0.0.1")
  *   port - Server port number (e.g., 1234)
  */
+ /* int client_loop(int socket_fd) {
+ *     // 1. Allocate buffers (send, receive, input)
+ *     // 2. Initialize session_key to NULL_CRYPTO_KEY
+ *     // 3. Loop:
+ *     //    a) Call get_command() to get user input
+ *     //    b) Build PDU from command (use helper function)
+ *     //    c) Send PDU using send()
+ *     //    d) If exit command, break after sending
+ *     //    e) Receive response using recv()
+ *     //    f) Handle recv() return values (0 = closed, <0 = error)
+ *     //    g) Process response:
+ *     //       - If MSG_KEY_EXCHANGE: extract key from payload
+ *     //       - If MSG_ENCRYPTED_DATA: decrypt using decrypt_string()
+ *     //       - Print results
+ *     //    h) Loop back
+ *     // 4. Free buffers
+ *     // 5. Return success/error code
+ * }
+ * 
+ * int build_packet(const msg_cmd_t *cmd, crypto_msg_t *pdu, crypto_key_t key) {
+ *     // 1. Set pdu->header.msg_type = cmd->cmd_id
+ *     // 2. Set pdu->header.direction = DIR_REQUEST
+ *     // 3. Based on cmd->cmd_id:
+ *     //    - MSG_DATA: copy cmd->cmd_line to payload, set length
+ *     //    - MSG_ENCRYPTED_DATA: encrypt cmd->cmd_line, set length
+ *     //    - MSG_KEY_EXCHANGE: set length to 0
+ *     //    - Command messages: set length to 0
+ *     // 4. Return sizeof(crypto_pdu_t) + payload_len
+ * }
+ */ 
 void start_client(const char* addr, int port) {
-   printf("HELLO FROM START CLIENT\n");
-
    int fd = socket(AF_INET,SOCK_STREAM,0);
-   printf("fd: %d\n",fd);
 
    struct sockaddr_in addr_struct;
    memset(&addr_struct,0,sizeof(addr_struct));
@@ -200,45 +229,83 @@ void start_client(const char* addr, int port) {
    inet_pton(AF_INET,addr,&addr_struct.sin_addr);
 
    int succ = connect(fd,(struct sockaddr*)&addr_struct,sizeof(addr_struct));
-   printf("successful connection: %d\n",succ);
    if(succ == -1){
       perror("connection failed");
       exit(-1);
    }
-  
+   printf("Connected to server %s:%d\n",addr,port);
    
-   int terminate = 0;
-   #define test_size 50
-   while(!terminate){
-      char send_buf[test_size] = {0};
-      for(int i = 0; i < test_size -1; i++){
-         send_buf[i] = 65+i;
-      }
-
-      size_t n = send(fd, send_buf, test_size, 0);
-      
-      printf("%ld characters sent) %s\n",n,send_buf);
-      char *buf = NULL;
-      size_t i = 0;
-      int ii = getline(&buf,&i,stdin);
-      printf("testing some stuff: i=%ld, ii=%d) %s\n",i, ii, buf);
-   }
-
+   client_loop(fd);
 
    int closeerr = close(fd);
-   printf("closeerr: %d\n",closeerr);
    if(closeerr == -1){
       printf("close failed\n");
    }
-
-
-    // printf("Student TODO: Implement start_client()\n");
-    // printf("  - Create TCP socket\n");
-    // printf("  - Connect to %s:%d\n", addr, port);
-    // printf("  - Implement communication loop\n");
-    // printf("  - Close socket when done\n");
+   
 }
 
+void client_loop(int socket_fd){
+   crypto_key_t client_keys = NULL_CRYPTO_KEY;
+   while(1){
+      char input_buffer[MAX_MSG_DATA_SIZE];
+      msg_cmd_t command;
+      int result = get_command(input_buffer, MAX_MSG_DATA_SIZE, &command);
+      if (result == CMD_EXECUTE) {
+         if (command.cmd_id == MSG_ENCRYPTED_DATA && client_keys == NULL_CRYPTO_KEY){
+            printf("[ERROR] No session key established. Cannot send encrypted data.\n");
+            continue;
+         }
+
+         crypto_msg_t *msg;
+         size_t s = build_packet(&command,&msg,client_keys);
+
+         size_t ns = send(socket_fd,(void *)msg,s,0);
+         print_msg_info(msg,client_keys,CLIENT_MODE);
+
+         if(command.cmd_id == MSG_CMD_SERVER_STOP || command.cmd_id == MSG_CMD_CLIENT_STOP){
+            return;
+         }
+
+         msg = calloc(MAX_MSG_SIZE,1);
+         size_t nr = recv(socket_fd,(void*)msg,MAX_MSG_SIZE,0);
+
+         if(msg->header.msg_type == MSG_KEY_EXCHANGE){
+            memcpy(&client_keys,msg->payload,sizeof(crypto_key_t));
+         }
+         
+         print_msg_info(msg,client_keys,CLIENT_MODE);
+      } else {
+         
+      }
+   }
+}
+
+size_t build_packet(const msg_cmd_t *cmd, crypto_msg_t **pdu, crypto_key_t key){
+         size_t text_len = cmd->cmd_line ? strlen(cmd->cmd_line) : 0;
+
+         char* m_text= calloc(sizeof(text_len)*2,1);
+         if(text_len){
+
+            if(cmd->cmd_id == MSG_ENCRYPTED_DATA){
+               text_len= encrypt_string(key,m_text,cmd->cmd_line,text_len);
+            }
+            else{
+               strcpy(m_text,cmd->cmd_line);
+            }
+         }
+
+         size_t new_size = sizeof(crypto_msg_t) + text_len;
+         *pdu = malloc(new_size);
+         memset(*pdu, 0, new_size);
+
+
+
+         strcpy((*pdu)->payload,m_text);
+         (*pdu)->header.msg_type = cmd->cmd_id;
+         (*pdu)->header.direction = DIR_REQUEST;
+         (*pdu)->header.payload_len = text_len;
+         return new_size;
+}
 
 /* =============================================================================
  * PROVIDED HELPER FUNCTION: get_command()

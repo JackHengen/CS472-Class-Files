@@ -229,6 +229,7 @@
 
 
 void connect_to_clients(int listen_fd);
+int talk_to_client(int client_sock);
 
 /* =============================================================================
  * STUDENT TODO: IMPLEMENT THIS FUNCTION
@@ -248,12 +249,10 @@ void connect_to_clients(int listen_fd);
  * NOTE: If addr is "0.0.0.0", use INADDR_ANY instead of inet_pton()
  */
 void start_server(const char* addr, int port) {
-   printf("HELLO FROM START SERVER\n");
    int fd = socket(AF_INET,SOCK_STREAM,0);
 
    int opt = 1;
    int opterr = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-   printf("opterr: %d\n",opterr);
    if(opterr == -1){
       perror("socket options failed");
       exit(-1);
@@ -266,14 +265,12 @@ void start_server(const char* addr, int port) {
    addr_struct.sin_addr.s_addr = INADDR_ANY; //parse addr here and if 0.0.0.0 then use INADDR_ANY - may need to use inet_pton
 
    int binderr = bind(fd, (struct sockaddr*)&addr_struct, sizeof(addr_struct));
-   printf("binderr: %d\n",binderr);
    if(binderr == -1){
       perror("binding failed");
       exit(-1);
    }
 
    int listenerr = listen(fd, BACKLOG);
-   printf("listenerr: %d\n",listenerr);
    if(listenerr == -1){
       perror("listening failed");
       exit(-1);
@@ -281,13 +278,7 @@ void start_server(const char* addr, int port) {
 
    connect_to_clients(fd);
 
-    // printf("Student TODO: Implement start_server()\n");
-    // printf("  - Create TCP socket\n");
-    // printf("  - Bind to %s:%d\n", addr, port);
-    // printf("  - Listen for connections (BACKLOG = %d)\n", BACKLOG);
-    // printf("  - Accept and handle clients in a loop\n");
-    // printf("  - Close socket on shutdown\n");
-    close(fd);
+   close(fd);
 }
 
 void connect_to_clients(int listen_fd){
@@ -297,7 +288,7 @@ void connect_to_clients(int listen_fd){
 
       socklen_t addr_len = sizeof(client_addr);
       int client_sock = accept(listen_fd, (struct sockaddr*)&client_addr, &addr_len);
-      printf("client sock: %d\n",client_sock);
+      printf("client connection\n");
       if(client_sock == -1){
          perror("accept failed");
          exit(-1);
@@ -306,25 +297,95 @@ void connect_to_clients(int listen_fd){
       char client_ip[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
 
-      size_t test_size = 50;
-      char* recv_buf = malloc(test_size);
-
-      while(1){
-         size_t n = recv(client_sock,recv_buf,test_size,0);
-         
-         printf("\n%ld) %s\n\n",n,recv_buf);
-
-         if(n==0){
-            break;
-         }
-
+      terminate = talk_to_client(client_sock);
+      if(terminate){
+         printf("server disconnect\n");
+      }else{
+         printf("client disconnect\n");
       }
 
 
       int closeerr = close(client_sock);
-      printf("closeerr: %d\n",closeerr);
       if(closeerr == -1){
          perror("close failed");
       }
    }
 }
+
+int talk_to_client(int client_sock){
+      crypto_key_t server_keys;
+      while(1){
+         crypto_msg_t *msg = malloc(MAX_MSG_SIZE);
+         size_t n = recv(client_sock, (void*)msg, MAX_MSG_SIZE, 0);
+         print_msg_info(msg,server_keys,SERVER_MODE);
+
+         if(n==0){
+            return 0;
+         }
+
+         int type = msg->header.msg_type;
+         size_t full_size;
+         crypto_msg_t *ret;
+         switch(type){
+            case MSG_CMD_SERVER_STOP:
+               return 1;
+            case MSG_CMD_CLIENT_STOP:
+               return 0;
+            case MSG_KEY_EXCHANGE:{
+                  crypto_key_t client_keys;
+                  gen_key_pair(&server_keys, &client_keys);
+
+                  full_size = sizeof(crypto_msg_t)+sizeof(crypto_key_t);
+                  ret = malloc(full_size);
+
+                  ret->header.payload_len = sizeof(crypto_key_t);
+                  ret->header.direction = DIR_RESPONSE;
+                  ret->header.msg_type = MSG_KEY_EXCHANGE;
+
+                  memcpy(&ret->payload, &client_keys, sizeof(crypto_key_t));
+
+                  break;
+               }
+            case MSG_ENCRYPTED_DATA:{
+                  char prefix[] = "echo ";
+                  size_t new_size = msg->header.payload_len+strlen(prefix);
+                  full_size = sizeof(crypto_msg_t) + new_size;
+
+                  decrypt_string(server_keys, msg->payload, msg->payload, msg->header.payload_len);
+                  
+                  ret = malloc(full_size);
+                  strcpy(ret->payload,prefix);
+                  strcat(ret->payload,msg->payload);
+
+                  ret->header.payload_len = new_size;
+                  ret->header.direction = DIR_RESPONSE;
+                  ret->header.msg_type = MSG_ENCRYPTED_DATA;
+
+                  encrypt_string(server_keys, ret->payload, ret->payload, ret->header.payload_len);
+
+                  char* enc_bytes = calloc(new_size,1);
+
+                  break;
+               }
+            case MSG_DATA: {
+                  char prefix[] = "echo ";
+                  size_t new_size = msg->header.payload_len+strlen(prefix);
+                  full_size = sizeof(crypto_msg_t) + new_size;
+
+                  ret = malloc(full_size);
+                  strcpy(ret->payload,prefix);
+                  strcat(ret->payload,msg->payload);
+
+                  ret->header.payload_len = new_size;
+                  ret->header.direction = DIR_RESPONSE;
+                  ret->header.msg_type = MSG_DATA;
+
+                  break;
+               }
+         }
+         print_msg_info(ret,server_keys,SERVER_MODE);
+         send(client_sock, (void *)ret, full_size, 0);
+      }
+}
+
+

@@ -1,17 +1,4 @@
 # Crypto Echo - Concept Questions
-
-## Instructions
-
-Answer the following questions to demonstrate your understanding of the networking concepts and design decisions in this assignment. Your answers should be thoughtful and demonstrate understanding of the underlying principles, not just surface-level descriptions.
-
-**Submission Requirements:**
-- Answer all 5 questions
-- Each answer should be 1-2 paragraphs (150-300 words)
-- Use specific examples from the assignment when applicable
-- Explain the "why" behind design decisions, not just the "what"
-
----
-
 ## Question 1: TCP vs UDP - Why Stateful Communication Matters
 
 **Question:**
@@ -23,6 +10,12 @@ This assignment requires you to use TCP instead of UDP. Explain in detail **why 
 **Hint:** Think about what happens to the encryption keys during a session and what TCP guarantees that UDP doesn't.
 
 ---
+
+TCP allows us to keep a persistent connection with a host or client. This means that we can keep data associated
+with the other side such as the cryptography keys. If UDP was used, each request would be a new connection. The
+client would remember the key it needs for the server, but the server wouldn't be able to store information per
+client unless it had some type of host ip to data mapping which would be extra as opposed to simply maintaining
+the state using TCP per connection.
 
 ## Question 2: Protocol Data Unit (PDU) Structure Design
 
@@ -36,6 +29,14 @@ Our protocol uses a fixed-structure PDU with a header containing `msg_type`, `di
 **Hint:** Think about different types of data (text, binary, encrypted bytes) and how the receiver knows what it's receiving.
 
 ---
+Structured PDUS are definitely the way to go for this type of communication. It was very easy to simply use the same
+header with the same included pdu struct for both the client and server. I could grab a pdu from recv and immediately load the bytes into
+the struct. The other way to do it would be to have to parse the message text manually. For example we would still need to send the
+type of message along with our data, but now it would the response would have to be delimited with some value, we would have to parse the reponse for that
+value and view everything before the delimiter as the msg type and everything after as the payload. This would
+be more work then simply grabbing the bytes right into a struct. If we want to type the delimiter how would we do
+that? If some messages don't require a payload or certain fields, we would still have to parse the whole message. Using a packed binary approach also saves on space: the
+msg types for example are tiny digits as opposed to "ENCRYPTED" or "PLAINTEXT" which would take much more space.
 
 ## Question 3: The Payload Length Field
 
@@ -49,6 +50,13 @@ TCP is a **stream-oriented protocol** (not message-oriented), yet our PDU includ
 **Hint:** Consider what happens when multiple PDUs are sent in rapid succession, or when a large PDU arrives in multiple `recv()` calls.
 
 ---
+One issue that wouldn't be resolved from TCP is that while a clients bytes will come in order, they will not be
+viewed as single messages, we can read any number of bytes from our client and it is our job to piece together the
+messages. If a client sends two messages before we can read them, the TCP client won't tell us they came from two
+client send()'s. However, if we recv sizeof(header) bytes and then from that grab the payload_len, and then
+recv(payload_len) we can grab one message, then our next recv will be (sizeof(header)) and we can grab the next
+message. This cannot be done without that field. 
+
 
 ## Question 4: Key Exchange Protocol and Session State
 
@@ -63,6 +71,15 @@ The key exchange must happen **before** any encrypted messages can be sent, and 
 
 ---
 
+Each session having a new key means that previous sessions will have different keys from a new session. This means
+that if someone learns a single key, they can only use it for the current session and all previous and next sessions
+will still be encrypted and safe, no data will be exposed. If the keys were hardcoded then one exposed key means
+all past and future data is exposed until the key is changed. If you mean hardcoded as physically hardcoded in the
+binary (not just a persistent key which can be changed as say an environmnet variable),
+then if there are two clients, they can both view messages sent from the server by using their own
+decryption keys for example. So per session key also allows multiple private connections.
+
+
 ## Question 5: The Direction Field in the PDU Header
 
 **Question:**
@@ -75,81 +92,12 @@ Every PDU includes a `direction` field (DIR_REQUEST or DIR_RESPONSE), even thoug
 **Hint:** Think about protocol clarity, error detection, and future extensibility beyond simple client-server.
 
 ---
-
-## Evaluation Criteria
-
-Your answers will be evaluated on:
-
-1. **Technical Accuracy** (40%)
-   - Correct understanding of networking concepts
-   - Accurate description of TCP/UDP differences
-   - Proper explanation of protocol design principles
-
-2. **Depth of Understanding** (30%)
-   - Going beyond surface-level descriptions
-   - Connecting concepts to specific implementation details
-   - Demonstrating "why" not just "what"
-
-3. **Completeness** (20%)
-   - Addressing all parts of each question
-   - Providing specific examples
-   - Covering edge cases or potential issues
-
-4. **Clarity** (10%)
-   - Well-organized answers
-   - Clear technical writing
-   - Proper use of terminology
-
----
-
-## Sample Strong Answer Structure
-
-Here's an example of how to structure a strong answer for Question 1:
-
-> **Opening Statement:** TCP is essential for this application because it provides a stateful, 
-> reliable connection that maintains the encryption session state throughout the communication.
->
-> **Key Points with Explanation:**
-> - TCP's connection-oriented nature means the encryption keys, once exchanged, remain valid 
->   for the entire session. With UDP, each datagram is independent, so we'd need to either 
->   re-exchange keys with every message (inefficient and insecure) or somehow track session 
->   state externally (complex).
->
-> - TCP guarantees reliable, ordered delivery. If a key exchange message was lost (as could 
->   happen with UDP), the client and server would be out of sync - the client might try to 
->   encrypt with a key it thinks it has, but the server never received the exchange request.
->
-> - The stateful connection allows us to assume that once keys are exchanged, they persist 
->   until the connection closes. This is fundamental to the protocol design.
->
-> **Conclusion/Summary:** Without TCP's stateful guarantees, we'd need to completely redesign 
-> our protocol to handle key management, message reliability, and session tracking - essentially 
-> reimplementing TCP's features at the application layer.
-
----
-
-## Submission
-
-Submit your answers as:
-- A text file: `lastname_firstname_answers.txt`
-- Or a PDF: `lastname_firstname_answers.pdf`
-- Or a Markdown file: `lastname_firstname_answers.md`
-
-Include your name and student ID at the top of your submission.
-
-**Due Date:** [To be announced by instructor]
-
----
-
-## Additional Hints
-
-If you're stuck on a question, try these approaches:
-
-1. **Review the code:** Look at how the protocol is actually implemented
-2. **Think about failure cases:** What would break if we did it differently?
-3. **Consider alternatives:** Why didn't we use simpler approaches?
-4. **Trace the flow:** Follow a message from client through network to server
-5. **Read the documentation:** Check `crypto.md` and `README.md` for context
-
-Remember: These questions are about understanding **why** we made certain design decisions, not just describing **what** the code does.
-
+Having a direction field allows us to easily know if the pdu we printed was to the server or from the server. Or in
+the servers side from the client or to the client. Otherwise, I feel like it wouldn't be too hard to disambiguate
+with clear variable names and print debugging, but this is a surefire way to have the data more readily viewable for
+debugging. Having a direction field would help more for an extended scope such as peer to peer communication. A
+client could then act as a server or a client and maybe be a client and a server at the same time. Printing and
+debugging
+simulatenous messages may be confusing. While the clients would still be connected over TCP and each session will be
+seperate where one acts a server and the other a client, there are now multiple connections and roles and much more
+moving parts where this field could help disambiguate things.

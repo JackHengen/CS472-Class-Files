@@ -511,7 +511,6 @@ int string_to_bytes(const uint8_t *str, uint8_t *bytes, size_t len) {
     
     for (size_t i = 0; i < len; i++) {
         uint8_t index = ascii_to_index[(uint8_t)str[i]];
-        
         if (index == 0xFF) {
             // Invalid character not in our alphabet
             return RC_INVALID_TEXT;
