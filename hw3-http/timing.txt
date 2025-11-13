@@ -1,0 +1,26 @@
+5 runs of client-ka
+
+0.005737
+0.008183 
+0.005405 
+0.007508 
+0.007744 
+
+average: 0.0069154
+
+5 runs of client-cc
+0.006160 
+0.005692 
+0.005788 
+0.006624 
+0.005861 
+
+average: 0.006025
+
+The client-ka actually took longer to run just barely.
+
+I think this is because of two things:
+- More work in parsing headers and finding content length in the ka client as opposed to the cc client
+- Relatively small http response which doesn't require many reads (i.e (len_res / 1024) is tiny so the cc client only
+  has to establish a new connection that tiny amount of times)
+

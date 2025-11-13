@@ -75,6 +75,10 @@ char *strnstr(const char *s, const char *find, size_t slen)
 }
 
 
+// Gets the ip from the address as a something like www.google.com
+// Open a TCP socket using ip addressing, use the resulting ip from the DNS lookup and the port passed through
+// Establish a TCP connection, do the handshake
+// Return the socket fd if all of that was successful else return negative to signal an error
 int socket_connect(const char *host, uint16_t port){
     struct hostent *hp;
     struct sockaddr_in addr;
@@ -106,10 +110,15 @@ int socket_connect(const char *host, uint16_t port){
 }
 
 
+// Parse the whole text of the buffer until the delimiter for the end of header is found (\r\n\r\n)
+// We now have a pointer to the start of the end of header delimiter and a pointer to the start.
+// To get the header size, its the difference between the start and end memory address of the two pointers, plus the
+// length of the end of header delimiter which wasn't counted in the "start of the end of header delimiter" pointer.
+// Return this calculated header size
 int get_http_header_len(char *http_buff, int http_buff_len){
     char *end_ptr;
     int header_len = 0;
-    end_ptr = strnstr(http_buff,HTTP_HEADER_END,http_buff_len);
+    end_ptr = strnstr(http_buff,HTTP_HEADER_END,http_buff_len); //return position of substring
 
     if (end_ptr == NULL) {
         fprintf(stderr, "Could not find the end of the HTTP header\n");
@@ -122,6 +131,10 @@ int get_http_header_len(char *http_buff, int http_buff_len){
 }
 
 
+// Look through only the header of the buffer passed through, scan for a key value pair at a time then check the
+// position of "Content-Length" which will only have a position if this key value pair is for Content-Length. If it has
+// a position, we found the header we are looking for, we grab the position of the delimiter between key and value, then
+// grab the value associated with the content length.
 int get_http_content_len(char *http_buff, int http_header_len){
     char header_line[MAX_HEADER_LINE];
 
@@ -130,11 +143,11 @@ int get_http_content_len(char *http_buff, int http_header_len){
 
     while (next_header_line < end_header_buff){
         bzero(header_line,sizeof(header_line));
-        sscanf(next_header_line,"%[^\r\n]s", header_line);
+        sscanf(next_header_line,"%[^\r\n]s", header_line); //look for delimiter btwn one kv pair and the next
 
-        char *isCLHeader = strcasestr(header_line,CL_HEADER);
+        char *isCLHeader = strcasestr(header_line,CL_HEADER); //return position of case insensitive substring
         if(isCLHeader != NULL){
-            char *header_value_start = strchr(header_line, HTTP_HEADER_DELIM);
+            char *header_value_start = strchr(header_line, HTTP_HEADER_DELIM); //return position of a character
             if (header_value_start != NULL){
                 char *header_value = header_value_start + 1;
                 int content_len = atoi(header_value);
