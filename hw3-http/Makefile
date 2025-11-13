@@ -21,3 +21,23 @@ run-ka:
 .PHONY: run-ka3
 run-ka3:
 	./client-ka httpbin.org 80 / /json /html
+
+.PHONY: run-cc-cci
+run-cc-cci:
+	./client-cc cci-p141.cci.drexel.edu 80 /
+
+.PHONY: run-cc3-cci
+run-cc3-cci:
+	./client-cc cci-p141.cci.drexel.edu 80 / /json /html
+
+.PHONY: run-ka-cci
+run-ka-cci:
+	./client-ka cci-p141.cci.drexel.edu 80 /
+
+.PHONY: run-ka3-cci
+run-ka3-cci:
+	./client-ka cci-p141.cci.drexel.edu 80 / /json /html
+
+.PHONY: clean
+clean:
+	rm -f client-cc client-ka
