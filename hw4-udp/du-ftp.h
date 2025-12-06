@@ -13,3 +13,13 @@ typedef struct prog_config{
     char    svr_ip_addr[16];
     char    file_name[128];
 } prog_config;
+
+#define DP_FTP_FDATA         1
+#define DP_FTP_MDATA         2
+#define DP_FTP_ERROR         4
+
+typedef struct dp_ftp_pdu { 
+   int proto_ver; 
+   int mtype; 
+   int msize;
+} dp_ftp_pdu;

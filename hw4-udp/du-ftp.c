@@ -4,15 +4,16 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <sys/stat.h>
 
 #include "du-ftp.h"
 #include "du-proto.h"
 
 
-#define BUFF_SZ 512
+#define BUFF_SZ 65536
 static char sbuffer[BUFF_SZ];
 static char rbuffer[BUFF_SZ];
-static char full_file_path[FNAME_SZ];
+static char full_file_path[FNAME_SZ+1];
 
 /*
  *  Helper function that processes the command line arguements.  Highlights
@@ -75,44 +76,96 @@ static int initParams(int argc, char *argv[], prog_config *cfg){
 
 int server_loop(dp_connp dpc, void *sBuff, void *rBuff, int sbuff_sz, int rbuff_sz){
     int rcvSz;
-
-    FILE *f = fopen(full_file_path, "wb+");
+    dp_ftp_pdu *inPdu = (dp_ftp_pdu*)rBuff;
+    FILE *f = NULL;
+    
+    rcvSz = dprecv(dpc, rBuff, sizeof(dp_ftp_pdu));
+    
+    if (inPdu->mtype != DP_FTP_MDATA){
+        printf("ERROR: Expected metadata PDU, got type %d\n", inPdu->mtype);
+        return -1;
+    }
+    
+    int metadata_size = inPdu->msize;
+    rcvSz = dprecv(dpc, rBuff + sizeof(dp_ftp_pdu), metadata_size);
+    
+    char *metadata = (char*)(rBuff + sizeof(dp_ftp_pdu));
+    char filepath[FNAME_SZ];
+    long timestamp;
+    printf("md: %s\n",metadata);
+    if (sscanf(metadata, "%150[^;];%ld", filepath, &timestamp) != 2){
+        printf("ERROR: Failed to parse metadata\n");
+			exit(-1);
+    }
+    
+    printf("Receiving file: %s (modified: %ld)\n", filepath, timestamp);
+    
+    f = fopen(filepath, "wb");
     if(f == NULL){
-        printf("ERROR:  Cannot open file %s\n", full_file_path);
+        printf("ERROR: Cannot open file %s for writing\n", filepath);
         exit(-1);
     }
-    if (dpc->isConnected == false){
-        perror("Expecting the protocol to be in connect state, but its not");
-        exit(-1);
-    }
-    //Loop until a disconnect is received, or error hapens
-    while(1) {
+    
+	 while(1) {
+		 rcvSz = dprecv(dpc, rBuff, sizeof(dp_ftp_pdu));
 
-        //receive request from client
-        rcvSz = dprecv(dpc, rBuff, rbuff_sz);
-        if (rcvSz == DP_CONNECTION_CLOSED){
-            fclose(f);
-            printf("Client closed connection\n");
-            return DP_CONNECTION_CLOSED;
-        }
-        fwrite(rBuff, 1, rcvSz, f);
-        rcvSz = rcvSz > 50 ? 50 : rcvSz;    //Just print the first 50 characters max
+		 if (rcvSz == DP_CONNECTION_CLOSED){
+			 fclose(f);
+			 return DP_CONNECTION_CLOSED;
+		 }
 
-        printf("========================> \n%.*s\n========================> \n", 
-            rcvSz, (char *)rBuff);
-    }
+		 if (inPdu->mtype != DP_FTP_FDATA){
+			 printf("ERROR: Expected file data PDU, got type %d\n", inPdu->mtype);
+			 fclose(f);
+			 exit(-1);
+		 }
 
+		 int data_size = inPdu->msize;
+		 int total_read = 0;
+
+		 while (total_read < data_size){
+			 // Read up to rbuff_sz bytes at a time
+			 int to_read = (data_size - total_read) < rbuff_sz ? 
+				 (data_size - total_read) : rbuff_sz;
+
+			 rcvSz = dprecv(dpc, rBuff, to_read);
+
+			 if (rcvSz <= 0){
+				 printf("ERROR: Failed to receive data chunk\n");
+				 fclose(f);
+				 return -1;
+			 }
+
+			 fwrite(rBuff, 1, rcvSz, f);
+			 total_read += rcvSz;
+		 }
+	 }
+
+	 return;
 }
 
 
-
 void start_client(dp_connp dpc){
-    static char sBuff[500];
+    static char sBuff[BUFF_SZ];
+    dp_ftp_pdu *outPdu = (dp_ftp_pdu*)sBuff;
+    outPdu->proto_ver = 1;
 
     if(!dpc->isConnected) {
         printf("Client not connected\n");
         return;
     }
+
+   struct stat st;
+   if (stat(full_file_path, &st) != 0) {
+      printf("ERROR: Cannot stat file %s\n", full_file_path);
+      exit(-1);
+   }
+
+    outPdu->mtype=DP_FTP_MDATA;
+   int metadata_len = sprintf((char*)(sBuff + sizeof(dp_ftp_pdu)), "%s;%ld", full_file_path, st.st_mtim.tv_sec);
+    printf("md: %s\n",sBuff+sizeof(dp_ftp_pdu));
+    outPdu->msize = metadata_len;
+   dpsend(dpc, sBuff, metadata_len + sizeof(dp_ftp_pdu));
 
 
     FILE *f = fopen(full_file_path, "rb");
@@ -125,10 +178,15 @@ void start_client(dp_connp dpc){
         exit(-1);
     }
 
+
+
     int bytes = 0;
 
-    while ((bytes = fread(sBuff, 1, sizeof(sBuff), f )) > 0)
-        dpsend(dpc, sBuff, bytes);
+    outPdu->mtype=DP_FTP_FDATA;
+    while ((bytes = fread(sBuff + sizeof(dp_ftp_pdu), 1, sizeof(sBuff - sizeof(dp_ftp_pdu)), f )) > 0){
+         outPdu->msize=bytes;
+        dpsend(dpc, sBuff, bytes + sizeof(dp_ftp_pdu));
+    }
 
     fclose(f);
     dpdisconnect(dpc);
@@ -158,7 +216,10 @@ int main(int argc, char *argv[])
     switch(cmd){
         case PROG_MD_CLI:
             //by default client will look for files in the ./outfile directory
-            snprintf(full_file_path, sizeof(full_file_path), "./outfile/%s", cfg.file_name);
+            int full_size = snprintf(full_file_path, sizeof(full_file_path), "./outfile/%s", cfg.file_name);
+            full_file_path[full_size]=0;
+            printf("strlen: %ld\n",strlen(full_file_path));
+
             dpc = dpClientInit(cfg.svr_ip_addr,cfg.port_number);
             rc = dpconnect(dpc);
             if (rc < 0) {
@@ -172,7 +233,9 @@ int main(int argc, char *argv[])
 
         case PROG_MD_SVR:
             //by default server will look for files in the ./infile directory
-            snprintf(full_file_path, sizeof(full_file_path), "./infile/%s", cfg.file_name);
+            int ffull_size = snprintf(full_file_path, sizeof(full_file_path), "./infile/%s", cfg.file_name);
+            full_file_path[ffull_size]=0;
+
             dpc = dpServerInit(cfg.port_number);
             rc = dplisten(dpc);
             if (rc < 0) {
