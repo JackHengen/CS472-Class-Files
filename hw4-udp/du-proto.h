@@ -60,7 +60,7 @@ typedef struct dp_pdu {
     int     err_num;
 } dp_pdu;
 
-#define     DP_MAX_BUFF_SZ          512
+#define     DP_MAX_BUFF_SZ          2048
 #define     DP_MAX_DGRAM_SZ         (DP_MAX_BUFF_SZ + sizeof(dp_pdu))
 
 #define     DP_NO_ERROR             0
